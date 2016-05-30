@@ -30,7 +30,7 @@ class Links:
         return links
 
     def getLinksFromData(self, data):
-        return data[2].tolist()[0:100]
+        return data[2].tolist()
 
 
 ###################################################
@@ -252,7 +252,7 @@ class RobotTextScrapper:
                     index = False
         if(index):
             try:
-                header = response.info()
+                header = req.info()
                 robotstag = str(header['X-Robots-Tag'])
             except:
                 pass
@@ -349,13 +349,9 @@ class HTMLScrapper:
     def processLink(self, link):
         soup = self.getSoup(link)
         if soup is not None:
-            print(link)
             title = self.getTitle(soup)
-            print(title)
             des = self.getDescription(soup)
-            print(des)
             keywords = self.getKeywords(soup)
-            print(keywords)
             info = [link, title, des, keywords]
             self.writer.write(self.writer.resultWriter,
                               self.writer.resultFile,
@@ -431,20 +427,23 @@ class Main():
 
     def setHeader(self):
         # Set youtube headers
+        youtubeHeader = ["link", "ids", "title", "description", "status",
+                         "keyword"]
         self.writer.write(self.writer.youtubeWriter, self.writer.youtubeFile,
-                          ["link", "ids", "title", "description", "status",
-                           "keyword"])
+                          *youtubeHeader)
+
         # Set results headers
+        resultHeader = ["link", "title", "description", "keyword"]
         self.writer.write(self.writer.resultWriter, self.writer.resultFile,
-                          ["link", "title", "description", "keyword"])
+                          *resultHeader)
 
     def execute(self):
 
         # print unique links and the counters
-        print('Writing counter of the file')
+        # print('Writing counter of the file')
         self.writeCounter()
 
-        print('Writing no duplicate')
+        # print('Writing no duplicate')
         self.data = self.writeNoDuplicate()
 
         # Iterate all the links
