@@ -5,7 +5,6 @@ from apiclient.discovery import build
 from bs4 import BeautifulSoup
 from collections import Counter
 
-import requests
 
 import pandas as pd
 import re
@@ -22,7 +21,7 @@ TEXT = 'weblinks.csv'
 class Links:
 
     def readCsv(self, text):
-        data = pd.read_csv(text, header=None, encoding = 'utf-8')
+        data = pd.read_csv(text, header=None, encoding='utf-8')
         return data
 
     def getPrepocessedLinks(self, text):
@@ -31,7 +30,7 @@ class Links:
         return links
 
     def getLinksFromData(self, data):
-        return data[2].tolist()
+        return data[2].tolist()[0:100]
 
 
 ###################################################
@@ -136,7 +135,6 @@ class Writer:
         self.invalidLinkFile.close()
 
     def write(self, agent, file, *line):
- 
         agent.writerow(line)
         file.flush()
         os.fsync(file.fileno())
@@ -162,6 +160,7 @@ class YoutubeAPI:
         YOUTUBE_API_VERSION = "v3"
         self.youtube = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION,
                              developerKey=DEVELOPER_KEY)
+
     def search(self, ids):
         video_response = self.youtube.videos().list(
             id=ids,
@@ -183,12 +182,11 @@ class YoutubeAPI:
                 tag = ''  # some do not have tags
 
             keyword = (','.join(tag))
-            
+
             info = [link, ids, title, description, status, keyword]
             writer.write(writer.youtubeWriter,
                          writer.youtubeFile,
                          *info)
-            
 
 
 #########################
@@ -203,13 +201,11 @@ class MyRobotParser(robotparser.RobotFileParser):
                       'Chrome/35.0.1916.47 Safari/537.36'
     }
 
-    def read(self, url):
+    def read(self):
         """Reads the robots.txt URL and feeds it to the parser."""
         try:
-            f = urlself.openfile(Request(
-                url,
-                headers=self.header))
-
+            f = urlopen(Request(
+                        self.url, headers=self.headers))
         except error.HTTPError as err:
             if err.code in (401, 403):
                 self.disallow_all = True
@@ -223,39 +219,48 @@ class MyRobotParser(robotparser.RobotFileParser):
                 self.parse(raw.decode("utf-8").splitlines())
 
 
-            
 class RobotTextScrapper:
 
-    def isLinkPublic(self, response, link):
-        content = response.read().decode('utf-8')
-        # print(conten.info())
-        soup = BeautifulSoup(content, 'html.parser')		
+    def isLinkPublic(self, link):
+        try:
+            req = Request(
+                link,
+                data=None,
+                headers={'User-Agent': '*'}
+            )
+            content = urlopen(req).read().decode('utf-8')
+        except:
+            pass
+        else:
+            soup = BeautifulSoup(content, 'html.parser',
+                                 from_encoding="iso-8859-1")
         index = True
         try:
-            content = soup.find("meta", {"name":"robots"})['content']
+            content = soup.find("meta", {"name": "robots"})['content']
         except:
             pass
         else:
             if(content == 'noindex'):
                 index = False
-        if(index == True):
+        if(index):
             try:
-                content = soup.find("meta", {"name":"googlebot"})['content']
+                content = soup.find("meta", {"name": "googlebot"})['content']
             except:
                 pass
             else:
                 if(content == 'noindex'):
                     index = False
-        if(index == True):
+        if(index):
             try:
                 header = response.info()
                 robotstag = str(header['X-Robots-Tag'])
             except:
                 pass
             else:
-                if robotstag != 'None' and ('noindex' or 'none' or 'unavailable_after' in robotstag):
+                if robotstag != 'None' and ('noindex' or 'none' or
+                                            'unavailable_after' in robotstag):
                     index = False
-        if(index == True):			
+        if(index):
             parser = urlparse(link)
             URL_BASE = parser.scheme + '://' + parser.netloc
             txt = urljoin(URL_BASE, 'robots.txt')
@@ -271,6 +276,7 @@ class RobotTextScrapper:
                 pass
         return index
 
+
 ###################################################
 # Class that extracts information from HTML files #
 ###################################################
@@ -279,11 +285,23 @@ class HTMLScrapper:
     def __init__(self, writer):
         self.writer = writer
 
-    def getSoup(self, response):
-        content = response.read().decode('utf-8')
-        soup = BeautifulSoup(content, 'html.parser')
-        print(soup)
-        return soup
+    def getSoup(self, link):
+        try:
+            req = Request(
+                link,
+                data=None,
+                headers={'User-Agent': '*'}
+            )
+            content = urlopen(req).read().decode('utf-8')
+        except:
+            self.writer.write(self.writer.invalidLinkWriter,
+                              self.writer.invalidLinkFile,
+                              link)
+            return None
+        else:
+            soup = BeautifulSoup(content, 'html.parser',
+                                 from_encoding="iso-8859-1")
+            return soup
 
     def getTitle(self, soup):
 
@@ -328,12 +346,16 @@ class HTMLScrapper:
         else:
             return kw
 
-    def processLink(self, response, link):
-        soup = self.getSoup(response)
+    def processLink(self, link):
+        soup = self.getSoup(link)
         if soup is not None:
+            print(link)
             title = self.getTitle(soup)
+            print(title)
             des = self.getDescription(soup)
-            keywords = self.getKeywords(soup)    
+            print(des)
+            keywords = self.getKeywords(soup)
+            print(keywords)
             info = [link, title, des, keywords]
             self.writer.write(self.writer.resultWriter,
                               self.writer.resultFile,
@@ -356,24 +378,6 @@ class Main():
         self.robot = RobotTextScrapper()
         self.scrapper = HTMLScrapper(self.writer)
 
-    def getHtmlResponse(self, link):
-        try:
-            req = Request(
-            link,
-            data=None,
-            headers={'User-Agent':	'*'}
-            )
-            response = urlopen(req)
-            print(response.info())
-
-        except:
-            self.writer.write(self.writer.invalidLinkWriter,
-                              self.writer.invalidLinkFile,
-                              link)
-            return None
-        else:
-            return response
-    
     def writeNoDuplicate(self):
         uni = list(set(self.data))
         for item in uni:
@@ -406,8 +410,8 @@ class Main():
         else:
             return False
 
-    def isLinkPrivate(self, response, link):
-        if not self.robot.isLinkPublic(response, link):
+    def isLinkPrivate(self, link):
+        if not self.robot.isLinkPublic(link):
             self.writer.write(self.writer.privateWriter,
                               self.writer.privateFile,
                               link)
@@ -419,26 +423,34 @@ class Main():
         # Check if it's google
         if not self.isLinkGoogle(link):
             if not self.isLinkYoutube(link):
-                self.response = self.getHtmlResponse(link)
-                if self.response is not None:
-                    if not self.isLinkPrivate(self.response, link):
-                        self.writer.write(self.writer.publicWriter,
-                                          self.writer.publicFile,
-                                          link)
-                        self.scrapper.processLink(self.response, link)
+                if not self.isLinkPrivate(link):
+                    self.writer.write(self.writer.publicWriter,
+                                      self.writer.publicFile,
+                                      link)
+                    self.scrapper.processLink(link)
+
+    def setHeader(self):
+        # Set youtube headers
+        self.writer.write(self.writer.youtubeWriter, self.writer.youtubeFile,
+                          ["link", "ids", "title", "description", "status",
+                           "keyword"])
+        # Set results headers
+        self.writer.write(self.writer.resultWriter, self.writer.resultFile,
+                          ["link", "title", "description", "keyword"])
 
     def execute(self):
 
         # print unique links and the counters
-        # print('Writing counter of the file')
+        print('Writing counter of the file')
         self.writeCounter()
-        # print('Writing no duplicate')
+
+        print('Writing no duplicate')
         self.data = self.writeNoDuplicate()
-        self.data = self.data[2:3]
+
         # Iterate all the links
+        self.setHeader()
         for link in self.data:
             if type(link) is str:
-                print(link)
                 self.process(link)
 
         # Closing the writers
